@@ -1,23 +1,26 @@
 # A vertex-centric representation for adaptive diamond-kite meshes
+#
+# usage: python R INPUT -- all arguments optional
+
 from __future__ import print_function
-from random import random,seed
+from sys import argv
+from random import random
+
+# depth of refinement
+R= int(argv[1]) if len(argv)>1 else 6
+
+# file containing initial mesh
+INPUT= argv[2] if len(argv)>2 else "-"
 
 # size of base mesh
 N=6
-
-# depth of refinement
-R=6
-
-# output extra files: csv, obj, off
-EXTRA=True
 
 # make array
 def array(n):
 	return list(range(n))
 
-# normalize 3-adic lattice coordinates [a,b,m]=(a+bw^2)/(3**m)
+# normalize 3-adic lattice coordinates [a,b,m]=(a+b*w^2)/(3^m)
 def normalize(a,b,m):
-	assert a==int(a) and b==int(b),(a,b,m)
 	a,b=int(a),int(b)
 	while m>0 and a%3==0 and b%3==0:
 		a=a/3
@@ -39,7 +42,7 @@ def add(v1,v2,n):
 
 # multiply 3-adic lattice points
 # PolynomialRemainder[(a_1 + b_1 z)(a_2 + b_2 z),z^2-z+1,z]
-# z (a_2 b_1 + a_1 b_2 + b_2 b_1) + a_1 a_2 - b_1 b_2
+#	z (a_2 b_1 + a_1 b_2 + b_2 b_1) + a_1 a_2 - b_1 b_2
 def multiply(v1,v2):
 	a1,b1,m1=v1
 	a2,b2,m2=v2
@@ -159,7 +162,7 @@ def basevertex(w,d,k):
 
 # base mesh: hexagonal grid
 def basemesh(N):
-	# use complex numbers for easy addition during grid generation
+	# use complex numbers for easy addition
 	for i in range(12):
 		a,b,m=W[i]
 		W[i]=complex(a,b)
@@ -175,7 +178,14 @@ def basemesh(N):
 				basevertex(c+W[0]+W[2],3,0)
 	boundary()
 
-# boundary vertices in base mesh
+# base mesh: mark boundary vertices
+def boundary():
+	for k in V:
+		v=V[k]
+		if isboundary(v):
+			v.d=0
+			v.k=0
+
 def isboundary(v):
 	for k in range(0,12,2):
 		w=v.w+W[k]
@@ -185,35 +195,50 @@ def isboundary(v):
 			return True
 	return False
 
-def boundary():
-	for k in V:
-		v=V[k]
-		if isboundary(v):
-			v.d=0
-			v.k=0
-
+# load mesh from csv file
 def loadmesh(filename):
 	N=0
 	for line in open(filename):
-		N=N+1
-		if N>1:
+		if N>0:
 			a,b,m,d,k,n=list(map(int,line.split(",")))
 			addvertex(a,b,m,d,k,n)
+		N=N+1
+	addredundant()
+
+# add vertices absent in file
+# vertices of degree 3 that are adjacent to a vertex of degree 6
+def addredundant():
+	for k in range(len(U)):
+		v=U[k]
+		if v.d==6:
+			for i in range(v.d):
+				a,b,m=adj(v,i)
+				if not (a,b,m) in V:
+					k=(6+2*i+v.k)%12
+					addvertex(a,b,m,3,k,v.n)
 
 # stars
+def adda(v,i,A):
+	w=A[v.d][v.k][i]
+	return add(v.t,w,v.n)
+
+def adj(v,i):
+	return adda(v,i,STAR)
+
+def adjacent(v,i):
+	a,b,m=adj(v,i)
+	return V[a,b,m]
+
 def star(v):
 	s=array(v.d)
 	for i in range(v.d):
-		w=STAR[v.d][v.k][i]
-		a,b,m=add(v.t,w,v.n)
-		s[i]=V[a,b,m]
+		s[i]=adjacent(v,i)
 	return s
 
 def makestar(v):
 	s=array(v.d)
 	for i in range(v.d):
-		w=STAR[v.d][v.k][i]
-		a,b,m=add(v.t,w,v.n)
+		a,b,m=adj(v,i)
 		assert not (a,b,m) in V,(a,b,m)
 		s[i]=addvertex(a,b,m,0,0,0)
 	return s
@@ -221,52 +246,53 @@ def makestar(v):
 # local subdivision step
 def subdivide(v):
 	assert v.d==6,v.d
+	k=v.k
+	n=v.n
 	s0=star(v)
-	vk=v.k
-	v.k=(v.k+1)%12
-	v.n=v.n+1
+	v.k=(k+1)%12
+	v.n=n+1
 	s1=makestar(v)
-	i=v.k
-	for w in s1:
+	for j in range(v.d):
+		w=s1[j]
 		w.d=3
-		w.k=(6+i)%12
-		w.n=v.n
-		i=i+2
-	i=vk
-	for w in s0:
+		w.k=(6+2*j+k+1)%12
+		w.n=n+1
+	for j in range(v.d):
+		w=s0[j]
+		kk=(6+2*j+k)%12
 		if w.d==0:
 			pass
 		elif w.d==3:
 			w.d=4
-			w.k=(6+i+4)%12
+			w.k=(kk+4)%12
 		elif w.d==4:
 			w.d=5
-			if w.k==(6+i)%12:
-				w.k=(w.k+4)%12
+			if w.k==kk:
+				w.k=(kk+4)%12
 			else:
-				w.k=w.k
+				w.k=(kk-4)%12
 		elif w.d==5:
 			w.d=6
-			w.k=(6+i-1)%12
-			w.n=v.n
+			w.k=(kk-1)%12
+			w.n=n+1
 		else:
 			assert False,w.d
-		i=i+2
 	return s0
 
-# faces and edges
+# opposites
+def opp(v,i):
+	return adda(v,i,OPP)
+
 def opposites(v):
 	s=array(v.d)
 	for i in range(0,2*v.d,2):
-		w=OPP[v.d][v.k][i]
-		a,b,m=add(v.t,w,v.n)
+		a,b,m=opp(v,i)
 		if not (a,b,m) in V:
-			w=OPP[v.d][v.k][i+1]
-			assert w!=(0,0,0)
-			a,b,m=add(v.t,w,v.n)
+			a,b,m=opp(v,i+1)
 		s[i//2]=V[a,b,m]
 	return s
 
+# faces and edges
 def addedge(v1,v2):
 	a=[v1,v2]
 	j=a.index(min(a))
@@ -289,6 +315,7 @@ def addfaces(v):
 	for i in range(v.d):
 		addface(v,s[i],o[i],s[(i+1)%v.d])
 
+# diamond or kite?
 def facetype(k):
 	v1,v2,v3,v4=k
 	a1,b1,m1=U[v1].t
@@ -305,6 +332,7 @@ def facetype(k):
 	else:
 		return "qk"
 
+# color face according to level
 def facetype(k):
 	v1,v2,v3,v4=k
 	n=max(U[v1].n,U[v2].n,U[v3].n,U[v4].n)
@@ -313,15 +341,22 @@ def facetype(k):
 # refinement
 queue=set()
 
+# Eppstein's prerequisite structure of replacement operations
+# must select all adjacent vertices beforehand: refine(w) can change v.d
+# v.d!=6 can happen if object is near the boundary when base mesh is too small
 def refine(v):
-	if v.d==4 or v.d==5:
-		for i in range(6-v.d):
-			w=STAR[v.d][v.k][i]
-			a,b,m=add(v.t,w,v.n)
-			w=V[a,b,m]
-			refine(w)
+	if v.d==4:
+		w0=adjacent(v,0)
+		w1=adjacent(v,1)
+		refine(w0)
+		refine(w1)
+	elif v.d==5:
+		w0=adjacent(v,0)
+		refine(w0)
+	#assert v.d==6,v
 	if v.d!=6:
-		# print "% bug", v.d
+		return
+	if v.n>=R:
 		return
 	s=subdivide(v)
 	for w in s:
@@ -329,30 +364,44 @@ def refine(v):
 			queue.add(w.t)
 	queue.add(v.t)
 
-# random
-def needsrefinement(v):
-	return v.n < R and random() < 0.45
-
-# uniform
+# refinement criterion: uniform
 def needsrefinement(v):
 	return v.n < R
 
-# implicit curve
+# refinement criterion: random
+def needsrefinement(v):
+	return v.n < R and random() < 0.45
+
+# refinement criterion: implicit curve
+def needsrefinement(v):
+	z = min([f(w)*f(v) for w in star(v)])
+	return v.n < R and z<=0
+
+# implicit curve (Taubin, 1994)
 def f(v):
 	z=v.z-complex(8,4)
 	x,y=z.real,z.imag
 	z=0.004+0.110*x-0.177*y-0.174*x*x+0.224*x*y-0.303*y*y-0.168*x*x*x+0.327*x*x*y-0.087*x*y*y-0.013*y*y*y+0.235*x*x*x*x-0.667*x*x*x*y+0.745*x*x*y*y-0.029*x*y*y*y+0.072*y*y*y*y;
 	return z
 
-def needsrefinement(v):
-	z = min([f(w)*f(v) for w in star(v)])
-	return v.n < R and z<=0
+# reduction: vertices of degree 3 that are adjacent to a vertex of degree 6
+#    same as vertices of degree 3 that are adjacent to an internal vertex
+def redundant(v):
+	if v.d!=3:
+		return False
+	for w in star(v):
+		#if w.d!=0:
+		if w.d==6:
+			return True
+	return False
 
 # main -----------------------------------------------------------------------
 
 # initial mesh
-basemesh(N)
-#loadmesh('in.csv')
+if INPUT=="-":
+	basemesh(N)
+else:
+	loadmesh(INPUT)
 
 # refine mesh
 queue = {k for k in V if V[k].d==6}
@@ -372,11 +421,10 @@ for k in V:
 print('''\
 %!PS-Adobe-2.0 EPSF-2.0
 %%BoundingBox: 0 0 500 300
+%%BoundingBox: 20 25 455 295
+%%BoundingBox: 135 80 390 240
 50 50 translate
-25 dup scale	% for N=6
-%20 dup scale	% for N=7
-%30 dup scale	% for N=5
-%40 dup scale	% for N=4
+25 dup scale
 0 setlinewidth
 1 setlinejoin
 1 setlinecap
@@ -391,10 +439,10 @@ print('''\
 /p6 { 1 0 0 setrgbcolor p } bind def
 /qd { 1 0.8 0.8 setrgbcolor q } bind def
 /qk { 0.8 0.8 1 setrgbcolor q } bind def
-/qt { 0.2 mul 0.1 add 1 sub neg dup 1 setrgbcolor q } bind def
-/qt { 0.8 6 div mul 0.1 add 1 sub neg dup 1 setrgbcolor q } bind def
+/qt { 0.9 6 div mul 0.1 add 1 sub neg dup 1 setrgbcolor q } bind def
 ''')
-print("%=ARG","N",N,"R",R)
+print("%=ARG",R,INPUT)
+print("%=VEF",R,len(V),len(U),len(E),len(F))
 
 print("")
 print("% faces")
@@ -418,29 +466,27 @@ for k in E:
 print("")
 print("% curve")
 print("1 0 0 setrgbcolor")
-print("0.01 setlinewidth")
 for k in E:
-	z1=U[k[0]].z
-	z2=U[k[1]].z
-	if f(U[k[0]])*f(U[k[1]])<=0:
-		#print z1.real,z1.imag, z2.real,z2.imag, "l"
-		print((z1.real+z2.real)/2,(z1.imag+z2.imag)/2, "c")
+	v0=U[k[0]]; z0=v0.z; f0=f(v0)
+	v1=U[k[1]]; z1=v1.z; f1=f(v1)
+	if f0*f1<=0:
+		t=(f0-0)/(f0-f1)
+		print((1-t)*z0.real+t*z1.real,(1-t)*z0.imag+t*z1.imag, "c")
 
-""" 
+"""
 print ""
 print "% vertices"
 print "0 0 0 setrgbcolor"
 for k in U:
 	v=U[k]
 	print v.z.real, v.z.imag, "p" + str(v.d) # + "0" # + str(v.k)
-""" 
+"""
 
 print("")
 print("showpage")
 print("%%EOF")
 
-if not EXTRA:
-	exit()
+#exit()	# if extra files not needed
 
 # output CSV
 print("")
@@ -448,7 +494,6 @@ PREFIX="%=CSV"
 print(PREFIX, "a,b,m,d,k,n")
 for k in range(len(U)):
 	v=U[k]
-	#print PREFIX, ','.join(map(str,[v.t[0],v.t[1],v.t[2],v.d,v.k,v.n,v.id]))
 	print(PREFIX, ','.join(map(str,[v.t[0],v.t[1],v.t[2],v.d,v.k,v.n])))
 
 # output OBJ
@@ -473,5 +518,7 @@ for k in range(len(U)):
 for k in F:
 	print(PREFIX, "4",k[0],k[1],k[2],k[3])
 
+# done
 print("")
 print("%=EOF")
+
