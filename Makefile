@@ -1,18 +1,22 @@
-P= dk.py
-O= out
 R= 6
 I= -
+O= out
 
-all:
-	python $P $R $I > $O.eps
+all:	dk stats
+
+dk kf:
+	python $@.py $R $I > $O.eps
+	-pstopdf $O.eps
+
+stats:
+	grep '^%=VEF ' $O.eps
 	grep '^%=CSV ' $O.eps | cut -c7- > $O.csv
 	grep '^%=OBJ ' $O.eps | cut -c7- > $O.obj
 	grep '^%=OFF ' $O.eps | cut -c7- > $O.off
 	wc -c -l $O.csv $O.obj $O.off
-	-pstopdf $O.eps
 
 clean:
 	-rm -f $O.*
 
-.PHONY:	all clean
+.PHONY:	all dk kf stats clean
 
