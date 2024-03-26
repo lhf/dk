@@ -1,6 +1,6 @@
 # A vertex-centric representation for adaptive diamond-kite meshes
 
-This is the code accompanying the paper [A vertex-centric representation for adaptive diamond-kite meshes](https://lhf.impa.br/ftp/papers/dk.pdf), to appear in [Computers & Graphics](https://www.elsevier.com/locate/cag) (2024).
+This is the code accompanying the paper [A vertex-centric representation for adaptive diamond-kite meshes](https://doi.org/10.1016/j.cag.2024.103910), to appear in [Computers & Graphics](https://www.elsevier.com/locate/cag) (2024).
 
 Adaptive diamond-kite meshes were introduced in the paper [Diamond-kite adaptive quadrilateral meshing](https://doi.org/10.1007/s00366-013-0327-9) by Eppstein (2014).
 
